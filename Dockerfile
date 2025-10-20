@@ -3,17 +3,17 @@ FROM python:3.12-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файлы зависимостей
-COPY pyproject.toml poetry.lock* ./
-
 # Устанавливаем Poetry
 RUN pip install --no-cache-dir poetry
 
 # Отключаем создание виртуального окружения (не нужно в Docker)
 RUN poetry config virtualenvs.create false
 
-# Устанавливаем зависимости
-RUN poetry install --only main --no-interaction --no-ansi
+# Копируем файлы зависимостей
+COPY pyproject.toml poetry.lock* ./
+
+# Устанавливаем зависимости (без установки самого проекта)
+RUN poetry install --only main --no-interaction --no-ansi --no-root
 
 # Копируем весь проект
 COPY . .
