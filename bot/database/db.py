@@ -49,6 +49,17 @@ class Database:
                 )
             """)
 
+            # Таблица админов
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS admins (
+                    user_id INTEGER PRIMARY KEY,
+                    added_by INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id),
+                    FOREIGN KEY (added_by) REFERENCES users(user_id)
+                )
+            """)
+
             await db.commit()
 
     async def add_user(self, user_id: int, username: str = None,
@@ -186,6 +197,45 @@ class Database:
             await db.execute("DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?", (user_id, user_id))
             # Удаляем рассылки
             await db.execute("DELETE FROM broadcasts WHERE sender_id = ?", (user_id,))
+            # Удаляем из админов (если есть)
+            await db.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
             # Удаляем пользователя
             await db.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
             await db.commit()
+
+    async def add_admin(self, user_id: int, added_by: int):
+        """Добавить пользователя в админы"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT OR IGNORE INTO admins (user_id, added_by)
+                VALUES (?, ?)
+            """, (user_id, added_by))
+            await db.commit()
+
+    async def remove_admin(self, user_id: int):
+        """Удалить пользователя из админов"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
+            await db.commit()
+
+    async def is_admin(self, user_id: int) -> bool:
+        """Проверить, является ли пользователь админом"""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("""
+                SELECT 1 FROM admins WHERE user_id = ?
+            """, (user_id,)) as cursor:
+                row = await cursor.fetchone()
+                return row is not None
+
+    async def get_all_admins(self) -> List[dict]:
+        """Получить список всех админов"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT a.*, u.username, u.first_name, u.last_name
+                FROM admins a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                ORDER BY a.created_at DESC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]

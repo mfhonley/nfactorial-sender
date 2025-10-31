@@ -5,43 +5,44 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from bot.database.db import Database
+from bot.utils.permissions import is_super_admin
 
 router = Router()
 
-ADMIN_ID = 803817300  # Твой ID
+SUPER_ADMIN_ID = 803817300  # Твой ID
 
 
 class AdminStates(StatesGroup):
     deleting_user = State()
 
 
-def is_admin(user_id: int) -> bool:
-    """Проверка на админа"""
-    return user_id == ADMIN_ID
-
-
 @router.message(Command("admin"))
 async def admin_panel(message: Message, db: Database):
-    """Админ-панель"""
-    if not is_admin(message.from_user.id):
+    """Админ-панель (только для супер админа)"""
+    if not is_super_admin(message.from_user.id):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
 
     stats = await db.get_user_stats()
+    admins = await db.get_all_admins()
 
     text = f"""
-🔐 <b>АДМИН-ПАНЕЛЬ</b>
+🔐 <b>СУПЕР АДМИН-ПАНЕЛЬ</b>
 
 📊 <b>Общая статистика:</b>
 👥 Всего пользователей: {stats['total_users']}
 💬 Всего сообщений: {stats['total_messages']}
 📤 Всего рассылок: {stats['total_broadcasts']}
+👑 Админов: {len(admins)}
 """
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")
+            ],
+            [
+                InlineKeyboardButton(text="👑 Управление админами", callback_data="admin_manage_admins")
             ],
             [
                 InlineKeyboardButton(text="💬 Последние сообщения", callback_data="admin_messages")
@@ -58,23 +59,25 @@ async def admin_panel(message: Message, db: Database):
 @router.callback_query(F.data == "admin_stats")
 async def admin_stats_callback(callback: CallbackQuery, db: Database):
     """Обновить статистику"""
-    if not is_admin(callback.from_user.id):
+    if not is_super_admin(callback.from_user.id):
         await callback.answer("❌ Доступ запрещен", show_alert=True)
         return
 
     stats = await db.get_user_stats()
+    admins = await db.get_all_admins()
 
     # Добавляем timestamp чтобы текст всегда был разный
     import datetime
     now = datetime.datetime.now().strftime("%H:%M:%S")
 
     text = f"""
-🔐 <b>АДМИН-ПАНЕЛЬ</b>
+🔐 <b>СУПЕР АДМИН-ПАНЕЛЬ</b>
 
 📊 <b>Общая статистика:</b>
 👥 Всего пользователей: {stats['total_users']}
 💬 Всего сообщений: {stats['total_messages']}
 📤 Всего рассылок: {stats['total_broadcasts']}
+👑 Админов: {len(admins)}
 
 <i>Обновлено: {now}</i>
 """
@@ -83,6 +86,9 @@ async def admin_stats_callback(callback: CallbackQuery, db: Database):
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")
+            ],
+            [
+                InlineKeyboardButton(text="👑 Управление админами", callback_data="admin_manage_admins")
             ],
             [
                 InlineKeyboardButton(text="💬 Последние сообщения", callback_data="admin_messages")
@@ -104,7 +110,7 @@ async def admin_stats_callback(callback: CallbackQuery, db: Database):
 @router.callback_query(F.data == "admin_users")
 async def admin_users_list(callback: CallbackQuery, db: Database):
     """Показать список всех пользователей"""
-    if not is_admin(callback.from_user.id):
+    if not is_super_admin(callback.from_user.id):
         await callback.answer("❌ Доступ запрещен", show_alert=True)
         return
 
@@ -140,7 +146,7 @@ async def admin_users_list(callback: CallbackQuery, db: Database):
 @router.callback_query(F.data == "admin_messages")
 async def admin_messages_list(callback: CallbackQuery, db: Database):
     """Показать последние сообщения"""
-    if not is_admin(callback.from_user.id):
+    if not is_super_admin(callback.from_user.id):
         await callback.answer("❌ Доступ запрещен", show_alert=True)
         return
 
@@ -179,8 +185,8 @@ async def admin_messages_list(callback: CallbackQuery, db: Database):
 
 @router.message(Command("broadcast_all"))
 async def admin_broadcast(message: Message, db: Database):
-    """Рассылка всем пользователям (только для админа)"""
-    if not is_admin(message.from_user.id):
+    """Рассылка всем пользователям (только для супер админа)"""
+    if not is_super_admin(message.from_user.id):
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
 
@@ -209,8 +215,8 @@ async def admin_broadcast(message: Message, db: Database):
 
 @router.message(Command("delete_user"))
 async def delete_user_command(message: Message, db: Database):
-    """Удалить пользователя (только для админа)"""
-    if not is_admin(message.from_user.id):
+    """Удалить пользователя (только для супер админа)"""
+    if not is_super_admin(message.from_user.id):
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
 
@@ -241,8 +247,8 @@ async def delete_user_command(message: Message, db: Database):
         return
 
     # Проверяем что не пытается удалить себя
-    if user_id == ADMIN_ID:
-        await message.answer("❌ Нельзя удалить админа!")
+    if user_id == SUPER_ADMIN_ID:
+        await message.answer("❌ Нельзя удалить супер админа!")
         return
 
     display_name = user.get('username') and f"@{user['username']}" or \
@@ -278,7 +284,7 @@ async def delete_user_command(message: Message, db: Database):
 @router.callback_query(F.data.startswith("deactivate_"))
 async def deactivate_user_callback(callback: CallbackQuery, db: Database):
     """Деактивировать пользователя"""
-    if not is_admin(callback.from_user.id):
+    if not is_super_admin(callback.from_user.id):
         await callback.answer("❌ Доступ запрещен", show_alert=True)
         return
 
@@ -297,7 +303,7 @@ async def deactivate_user_callback(callback: CallbackQuery, db: Database):
 @router.callback_query(F.data.startswith("delete_"))
 async def delete_user_callback(callback: CallbackQuery, db: Database):
     """Полностью удалить пользователя"""
-    if not is_admin(callback.from_user.id):
+    if not is_super_admin(callback.from_user.id):
         await callback.answer("❌ Доступ запрещен", show_alert=True)
         return
 
@@ -318,3 +324,150 @@ async def cancel_delete_callback(callback: CallbackQuery):
     """Отменить удаление"""
     await callback.message.edit_text("❌ Удаление отменено.")
     await callback.answer()
+
+
+# ============ УПРАВЛЕНИЕ АДМИНАМИ ============
+
+@router.callback_query(F.data == "admin_manage_admins")
+async def manage_admins(callback: CallbackQuery, db: Database):
+    """Управление админами"""
+    if not is_super_admin(callback.from_user.id):
+        await callback.answer("❌ Доступ запрещен", show_alert=True)
+        return
+
+    admins = await db.get_all_admins()
+
+    if not admins:
+        text = "👑 <b>Управление админами</b>\n\n❌ Нет админов."
+    else:
+        text = "👑 <b>Список админов:</b>\n\n"
+        for i, admin in enumerate(admins, 1):
+            display_name = admin.get('username') and f"@{admin['username']}" or \
+                          admin.get('first_name') or f"ID: {admin['user_id']}"
+            text += f"{i}. {display_name} (ID: {admin['user_id']})\n"
+            text += f"   └ Добавлен: {admin.get('created_at', 'неизвестно')}\n\n"
+
+    text += "\n\n<b>Команды:</b>\n"
+    text += "• <code>/add_admin USER_ID</code> - добавить админа\n"
+    text += "• <code>/remove_admin USER_ID</code> - удалить админа"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data="admin_stats")
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.message(Command("add_admin"))
+async def add_admin_command(message: Message, db: Database):
+    """Добавить админа (только для супер админа)"""
+    if not is_super_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+
+    # Получаем user_id после команды
+    args = message.text.split()
+
+    if len(args) < 2:
+        await message.answer(
+            "👑 <b>Добавление админа</b>\n\n"
+            "Используйте команду:\n"
+            "<code>/add_admin USER_ID</code>\n\n"
+            "Например: <code>/add_admin 123456789</code>\n\n"
+            "Чтобы узнать ID пользователя, посмотрите в /admin → Список пользователей",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Используйте число.")
+        return
+
+    # Проверяем что пользователь существует
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        await message.answer(f"❌ Пользователь с ID {user_id} не найден в базе.")
+        return
+
+    # Проверяем что это не супер админ
+    if user_id == SUPER_ADMIN_ID:
+        await message.answer("❌ Супер админ не может быть добавлен как обычный админ!")
+        return
+
+    # Проверяем что пользователь еще не админ
+    if await db.is_admin(user_id):
+        await message.answer(f"❌ Пользователь {user_id} уже является админом.")
+        return
+
+    # Добавляем админа
+    await db.add_admin(user_id, message.from_user.id)
+
+    display_name = user.get('username') and f"@{user['username']}" or \
+                  user.get('first_name') or f"ID: {user_id}"
+
+    await message.answer(
+        f"✅ <b>Пользователь добавлен в админы!</b>\n\n"
+        f"Имя: {display_name}\n"
+        f"ID: {user_id}\n\n"
+        f"Теперь этот пользователь может отправлять сообщения другим пользователям бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.message(Command("remove_admin"))
+async def remove_admin_command(message: Message, db: Database):
+    """Удалить админа (только для супер админа)"""
+    if not is_super_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+
+    # Получаем user_id после команды
+    args = message.text.split()
+
+    if len(args) < 2:
+        await message.answer(
+            "👑 <b>Удаление админа</b>\n\n"
+            "Используйте команду:\n"
+            "<code>/remove_admin USER_ID</code>\n\n"
+            "Например: <code>/remove_admin 123456789</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Используйте число.")
+        return
+
+    # Проверяем что это не супер админ
+    if user_id == SUPER_ADMIN_ID:
+        await message.answer("❌ Нельзя удалить супер админа!")
+        return
+
+    # Проверяем что пользователь является админом
+    if not await db.is_admin(user_id):
+        await message.answer(f"❌ Пользователь {user_id} не является админом.")
+        return
+
+    # Удаляем админа
+    await db.remove_admin(user_id)
+
+    user = await db.get_user_by_id(user_id)
+    display_name = user.get('username') and f"@{user['username']}" or \
+                  user.get('first_name') or f"ID: {user_id}" if user else f"ID: {user_id}"
+
+    await message.answer(
+        f"✅ <b>Админ удален!</b>\n\n"
+        f"Имя: {display_name}\n"
+        f"ID: {user_id}\n\n"
+        f"Теперь этот пользователь больше не может отправлять сообщения.",
+        parse_mode="HTML"
+    )

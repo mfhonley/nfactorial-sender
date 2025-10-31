@@ -6,6 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from bot.keyboards.main_kb import get_user_list_keyboard, get_cancel_keyboard, get_confirm_keyboard
 from bot.database.db import Database
+from bot.utils.permissions import can_send_messages
 
 router = Router()
 
@@ -34,6 +35,14 @@ def get_reply_keyboard(sender_id: int) -> InlineKeyboardMarkup:
 @router.message(F.text == "📤 Отправить сообщение")
 async def start_messaging(message: Message, state: FSMContext, db: Database):
     """Начать процесс отправки сообщения"""
+    # Проверяем права на отправку
+    if not await can_send_messages(message.from_user.id, db):
+        await message.answer(
+            "❌ У вас нет прав для отправки сообщений.\n\n"
+            "Обратитесь к администратору бота."
+        )
+        return
+
     users = await db.get_all_users(exclude_user_id=message.from_user.id)
 
     if not users:
@@ -256,6 +265,14 @@ async def cancel_send(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("reply_"))
 async def start_reply(callback: CallbackQuery, state: FSMContext, db: Database):
     """Начать ответ на сообщение"""
+    # Проверяем права на отправку
+    if not await can_send_messages(callback.from_user.id, db):
+        await callback.answer(
+            "❌ У вас нет прав для отправки сообщений.",
+            show_alert=True
+        )
+        return
+
     sender_id = int(callback.data.split("_")[1])
 
     # Получаем информацию об отправителе

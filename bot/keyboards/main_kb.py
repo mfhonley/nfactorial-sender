@@ -1,23 +1,39 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Главное меню"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="📤 Отправить сообщение")
+def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    """Главное меню - показывает разные кнопки для админов и обычных пользователей"""
+    if is_admin:
+        # Админы могут отправлять сообщения
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="📤 Отправить сообщение")
+                ],
+                [
+                    KeyboardButton(text="👥 Список пользователей"),
+                    KeyboardButton(text="📊 Статистика")
+                ],
+                [
+                    KeyboardButton(text="ℹ️ Помощь")
+                ]
             ],
-            [
-                KeyboardButton(text="👥 Список пользователей"),
-                KeyboardButton(text="📊 Статистика")
+            resize_keyboard=True
+        )
+    else:
+        # Обычные пользователи могут только просматривать информацию
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="👥 Список пользователей"),
+                    KeyboardButton(text="📊 Статистика")
+                ],
+                [
+                    KeyboardButton(text="ℹ️ Помощь")
+                ]
             ],
-            [
-                KeyboardButton(text="ℹ️ Помощь")
-            ]
-        ],
-        resize_keyboard=True
-    )
+            resize_keyboard=True
+        )
     return keyboard
 
 
